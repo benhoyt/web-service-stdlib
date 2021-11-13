@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/iotest"
 )
 
 // Duplicate this struct in tests so tests catch breaking changes.
@@ -28,14 +29,14 @@ func TestGetAlbums(t *testing.T) {
 	result := serve(t, server, newRequest(t, "GET", "/albums", nil))
 	ensureStatus(t, result, http.StatusOK)
 
-	var albums []testAlbum
-	unmarshalResponse(t, result.Body, &albums)
-	expected := []testAlbum{
+	var got []testAlbum
+	unmarshalResponse(t, result.Body, &got)
+	want := []testAlbum{
 		{ID: "a1", Title: "9th Symphony", Artist: "Beethoven", Price: 795},
 		{ID: "a2", Title: "Hey Jude", Artist: "The Beetles", Price: 2000},
 	}
-	if !reflect.DeepEqual(albums, expected) {
-		t.Fatalf("bad response: got vs want:\n%#v\n%#v", albums, expected)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("bad response: got vs want:\n%#v\n%#v", got, want)
 	}
 }
 
@@ -57,9 +58,9 @@ func TestGetAlbum(t *testing.T) {
 }
 
 type getAlbumTest struct {
-	path     string
-	code     int
-	expected testAlbum
+	path string
+	code int
+	want testAlbum
 }
 
 // This test logic is factored out as it's used in a few places.
@@ -71,10 +72,10 @@ func testGetAlbum(t *testing.T, server *Server, test getAlbumTest) {
 		return
 	}
 
-	var album testAlbum
-	unmarshalResponse(t, result.Body, &album)
-	if !reflect.DeepEqual(album, test.expected) {
-		t.Fatalf("bad response: got vs want:\n%#v\n%#v", album, test.expected)
+	var got testAlbum
+	unmarshalResponse(t, result.Body, &got)
+	if !reflect.DeepEqual(got, test.want) {
+		t.Fatalf("bad response: got vs want:\n%#v\n%#v", got, test.want)
 	}
 }
 
@@ -84,15 +85,15 @@ func TestAddAlbumCreated(t *testing.T) {
 	result := serve(t, server, newRequest(t, "POST", "/albums", strings.NewReader(body)))
 	ensureStatus(t, result, http.StatusCreated)
 
-	var album testAlbum
-	unmarshalResponse(t, result.Body, &album)
-	expected := testAlbum{ID: "a9", Title: "Pianoman", Artist: "Billy Joel", Price: 1234}
-	if !reflect.DeepEqual(album, expected) {
-		t.Fatalf("bad response: got vs want:\n%#v\n%#v", album, expected)
+	var got testAlbum
+	unmarshalResponse(t, result.Body, &got)
+	want := testAlbum{ID: "a9", Title: "Pianoman", Artist: "Billy Joel", Price: 1234}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("bad response: got vs want:\n%#v\n%#v", got, want)
 	}
 
 	// Ensure we can fetch the album after it's been created
-	testGetAlbum(t, server, getAlbumTest{"/albums/a9", http.StatusOK, expected})
+	testGetAlbum(t, server, getAlbumTest{"/albums/a9", http.StatusOK, want})
 
 	// Ensure /albums lists the new album
 	result = serve(t, server, newRequest(t, "GET", "/albums", nil))
@@ -101,8 +102,8 @@ func TestAddAlbumCreated(t *testing.T) {
 	unmarshalResponse(t, result.Body, &albums)
 	for _, album := range albums {
 		if album.ID == "a9" {
-			if !reflect.DeepEqual(album, expected) {
-				t.Fatalf("bad response: got vs want:\n%#v\n%#v", album, expected)
+			if !reflect.DeepEqual(album, want) {
+				t.Fatalf("bad response: got vs want:\n%#v\n%#v", album, want)
 			}
 			return
 		}
@@ -118,8 +119,8 @@ func TestAddAlbumAlreadyExists(t *testing.T) {
 	ensureError(t, result, http.StatusConflict, "already-exists", nil)
 
 	// Ensure it didn't modify the album
-	expected := testAlbum{ID: "a2", Title: "Hey Jude", Artist: "The Beetles", Price: 2000}
-	testGetAlbum(t, server, getAlbumTest{"/albums/a2", http.StatusOK, expected})
+	want := testAlbum{ID: "a2", Title: "Hey Jude", Artist: "The Beetles", Price: 2000}
+	testGetAlbum(t, server, getAlbumTest{"/albums/a2", http.StatusOK, want})
 }
 
 func TestAddAlbumBadJSON(t *testing.T) {
@@ -177,6 +178,33 @@ func TestDatabaseErrors(t *testing.T) {
 	result = serve(t, server, newRequest(t, "GET", "/albums/a1", nil))
 	ensureStatus(t, result, http.StatusInternalServerError)
 	ensureError(t, result, http.StatusInternalServerError, "database", nil)
+}
+
+func TestMethodNotAllowed(t *testing.T) {
+	server := newTestServer()
+	result := serve(t, server, newRequest(t, "PUT", "/albums", nil))
+	ensureStatus(t, result, http.StatusMethodNotAllowed)
+	ensureError(t, result, http.StatusMethodNotAllowed, "method-not-allowed", nil)
+	allow := result.Header.Get("Allow")
+	if allow != "GET, POST" {
+		t.Fatalf("bad Allow header: got %q, want %q", allow, "GET, POST")
+	}
+
+	result = serve(t, server, newRequest(t, "PUT", "/albums/a1", nil))
+	ensureStatus(t, result, http.StatusMethodNotAllowed)
+	ensureError(t, result, http.StatusMethodNotAllowed, "method-not-allowed", nil)
+	allow = result.Header.Get("Allow")
+	if allow != "GET" {
+		t.Fatalf("bad Allow header: got %q, want %q", allow, "GET")
+	}
+}
+
+func TestReadJSONReadError(t *testing.T) {
+	server := newTestServer()
+	errReader := iotest.ErrReader(errors.New("error"))
+	result := serve(t, server, newRequest(t, "POST", "/albums", errReader))
+	ensureStatus(t, result, http.StatusInternalServerError)
+	ensureError(t, result, http.StatusInternalServerError, "internal", nil)
 }
 
 type errorDatabase struct{}
@@ -243,14 +271,14 @@ func ensureError(t *testing.T, response *http.Response, status int, error string
 		Error  string                 `json:"error"`
 		Data   map[string]interface{} `json:"data"`
 	}
-	var payload errorResponse
-	unmarshalResponse(t, response.Body, &payload)
-	expected := errorResponse{
+	var got errorResponse
+	unmarshalResponse(t, response.Body, &got)
+	want := errorResponse{
 		Status: status,
 		Error:  error,
 		Data:   data,
 	}
-	if !reflect.DeepEqual(payload, expected) {
-		t.Fatalf("bad error: got vs want:\n%#v\n%#v", payload, expected)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("bad error: got vs want:\n%#v\n%#v", got, want)
 	}
 }
