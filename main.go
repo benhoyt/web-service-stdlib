@@ -3,6 +3,7 @@
 // This is a rewrite of https://golang.org/doc/tutorial/web-service-gin
 // using just the Go standard library (and fixing a few issues).
 
+// TODO: return errors as JSON, with defined format for Bad Request missing fields
 package main
 
 import (
@@ -31,7 +32,7 @@ func main() {
 	db.AddAlbum(Album{ID: "a2", Title: "Hey Jude", Artist: "The Beetles", Price: 2000})
 
 	// Create server and wire up database
-	server := NewServer(db)
+	server := NewServer(db, log.Default())
 
 	log.Printf("listening on http://localhost:%d", port)
 	http.ListenAndServe(":"+strconv.Itoa(port), server)
@@ -39,7 +40,8 @@ func main() {
 
 // Server is the album server.
 type Server struct {
-	db Database
+	db  Database
+	log *log.Logger
 }
 
 // Database is the interface used by the server to load and store albums.
@@ -70,8 +72,8 @@ type Album struct {
 }
 
 // NewServer creates a new server using the given database implementation.
-func NewServer(db Database) *Server {
-	return &Server{db: db}
+func NewServer(db Database, log *log.Logger) *Server {
+	return &Server{db: db, log: log}
 }
 
 // Regex to match "/albums/:id" (id must be one or more non-slash chars).
@@ -82,7 +84,7 @@ var albumsIDRegexp = regexp.MustCompile(`^/albums/[^/]+$`)
 // or 405 Method Not Allowed if the request method is invalid.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
-	log.Printf("%s %s", r.Method, path)
+	s.log.Printf("%s %s", r.Method, path)
 
 	switch {
 	case path == "/albums":
