@@ -3,7 +3,8 @@
 // This is a rewrite of https://golang.org/doc/tutorial/web-service-gin
 // using just the Go standard library (and fixing a few issues).
 
-// TODO: return errors as JSON, with defined format for Bad Request missing fields
+// TODO: check test coverage HTML
+
 package main
 
 import (
@@ -16,7 +17,6 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 )
 
@@ -63,6 +63,16 @@ var (
 	ErrAlreadyExists = errors.New("already exists")
 )
 
+const (
+	ErrorAlreadyExists    = "already-exists"
+	ErrorDatabase         = "database"
+	ErrorInternal         = "internal"
+	ErrorMalformedJSON    = "malformed-json"
+	ErrorMethodNotAllowed = "method-not-allowed"
+	ErrorNotFound         = "not-found"
+	ErrorValidation       = "validation"
+)
+
 // Album represents data about a single album.
 type Album struct {
 	ID     string `json:"id"`
@@ -94,7 +104,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case "POST":
 			s.addAlbum(w, r)
 		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			w.Header().Set("Allow", "GET, POST")
+			jsonError(w, http.StatusMethodNotAllowed, ErrorMethodNotAllowed, nil)
 		}
 
 	case albumsIDRegexp.MatchString(path):
@@ -103,21 +114,22 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			id := path[len("/albums/"):]
 			s.getAlbumByID(w, r, id)
 		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			w.Header().Set("Allow", "GET")
+			jsonError(w, http.StatusMethodNotAllowed, ErrorMethodNotAllowed, nil)
 		}
 
 	default:
-		http.NotFound(w, r)
+		jsonError(w, http.StatusNotFound, ErrorNotFound, nil)
 	}
 }
 
 func (s *Server) getAlbums(w http.ResponseWriter, r *http.Request) {
 	albums, err := s.db.GetAlbums()
 	if err != nil {
-		http.Error(w, "error fetching albums", http.StatusInternalServerError)
+		jsonError(w, http.StatusInternalServerError, ErrorDatabase, nil)
 		return
 	}
-	writeJSON(w, albums)
+	writeJSON(w, http.StatusOK, albums)
 }
 
 func (s *Server) addAlbum(w http.ResponseWriter, r *http.Request) {
@@ -138,46 +150,63 @@ func (s *Server) addAlbum(w http.ResponseWriter, r *http.Request) {
 		missing = append(missing, "artist")
 	}
 	if len(missing) > 0 {
-		http.Error(w, "missing fields: "+strings.Join(missing, ", "), http.StatusBadRequest)
+		data := map[string]interface{}{
+			"details": "missing fields",
+			"fields":  missing,
+		}
+		jsonError(w, http.StatusBadRequest, ErrorValidation, data)
 		return
 	}
 
 	err := s.db.AddAlbum(album)
 	if err == ErrAlreadyExists {
-		http.Error(w, "album "+album.ID+" already exists", http.StatusConflict)
+		jsonError(w, http.StatusConflict, ErrorAlreadyExists, nil)
 		return
 	} else if err != nil {
-		http.Error(w, "error adding album", http.StatusInternalServerError)
+		jsonError(w, http.StatusInternalServerError, ErrorDatabase, nil)
 		return
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	writeJSON(w, album)
+	writeJSON(w, http.StatusOK, album)
 }
 
 func (s *Server) getAlbumByID(w http.ResponseWriter, r *http.Request, id string) {
 	album, err := s.db.GetAlbumByID(id)
 	if err == ErrDoesNotExist {
-		http.NotFound(w, r)
+		jsonError(w, http.StatusNotFound, ErrorNotFound, nil)
+		return
+	} else if err != nil {
+		jsonError(w, http.StatusInternalServerError, ErrorDatabase, nil)
 		return
 	}
-	if err != nil {
-		http.Error(w, "error fetching album", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, album)
+	writeJSON(w, http.StatusOK, album)
 }
 
 // writeJSON marshals v to JSON and writes it to the response, handling errors
 // as appropriate. It also sets the Content-Type header to application/json.
-func writeJSON(w http.ResponseWriter, v interface{}) {
+func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
 	b, err := json.MarshalIndent(v, "", "    ")
 	if err != nil {
-		http.Error(w, "error marshaling JSON", http.StatusInternalServerError)
+		http.Error(w, `{"error":"`+ErrorInternal+`"}`, http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
 	w.Write(b)
+}
+
+func jsonError(w http.ResponseWriter, status int, error string, data map[string]interface{}) {
+	response := struct {
+		Status int                    `json:"status"`
+		Error  string                 `json:"error"`
+		Data   map[string]interface{} `json:"data,omitempty"`
+	}{
+		Status: status,
+		Error:  error,
+		Data:   data,
+	}
+	writeJSON(w, status, response)
 }
 
 // readJSON reads the request body and unmarshals it from JSON, handling
@@ -186,12 +215,13 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 func readJSON(w http.ResponseWriter, r *http.Request, v interface{}) bool {
 	b, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "error reading body", http.StatusInternalServerError)
+		jsonError(w, http.StatusInternalServerError, ErrorInternal, nil)
 		return false
 	}
 	err = json.Unmarshal(b, v)
 	if err != nil {
-		http.Error(w, "error unmarshaling JSON: "+err.Error(), http.StatusBadRequest)
+		data := map[string]interface{}{"details": err.Error()}
+		jsonError(w, http.StatusBadRequest, ErrorMalformedJSON, data)
 		return false
 	}
 	return true

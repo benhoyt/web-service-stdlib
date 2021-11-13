@@ -26,7 +26,7 @@ type testAlbum struct {
 func TestGetAlbums(t *testing.T) {
 	server := newTestServer()
 	result := serve(t, server, newRequest(t, "GET", "/albums", nil))
-	ensureStatusCode(t, result, http.StatusOK)
+	ensureStatus(t, result, http.StatusOK)
 
 	var albums []testAlbum
 	unmarshalResponse(t, result.Body, &albums)
@@ -65,8 +65,9 @@ type getAlbumTest struct {
 // This test logic is factored out as it's used in a few places.
 func testGetAlbum(t *testing.T, server *Server, test getAlbumTest) {
 	result := serve(t, server, newRequest(t, "GET", test.path, nil))
-	ensureStatusCode(t, result, test.code)
-	if test.code != http.StatusOK {
+	ensureStatus(t, result, test.code)
+	if test.code == http.StatusNotFound {
+		ensureError(t, result, http.StatusNotFound, "not-found", nil)
 		return
 	}
 
@@ -81,7 +82,7 @@ func TestAddAlbumCreated(t *testing.T) {
 	server := newTestServer()
 	body := `{"id": "a9", "title": "Pianoman", "artist": "Billy Joel", "price": 1234}`
 	result := serve(t, server, newRequest(t, "POST", "/albums", strings.NewReader(body)))
-	ensureStatusCode(t, result, http.StatusCreated)
+	ensureStatus(t, result, http.StatusCreated)
 
 	var album testAlbum
 	unmarshalResponse(t, result.Body, &album)
@@ -95,7 +96,7 @@ func TestAddAlbumCreated(t *testing.T) {
 
 	// Ensure /albums lists the new album
 	result = serve(t, server, newRequest(t, "GET", "/albums", nil))
-	ensureStatusCode(t, result, http.StatusOK)
+	ensureStatus(t, result, http.StatusOK)
 	var albums []testAlbum
 	unmarshalResponse(t, result.Body, &albums)
 	for _, album := range albums {
@@ -113,7 +114,8 @@ func TestAddAlbumAlreadyExists(t *testing.T) {
 	server := newTestServer()
 	body := `{"id": "a2", "title": "Foo", "artist": "Bar"}`
 	result := serve(t, server, newRequest(t, "POST", "/albums", strings.NewReader(body)))
-	ensureStatusCode(t, result, http.StatusConflict)
+	ensureStatus(t, result, http.StatusConflict)
+	ensureError(t, result, http.StatusConflict, "already-exists", nil)
 
 	// Ensure it didn't modify the album
 	expected := testAlbum{ID: "a2", Title: "Hey Jude", Artist: "The Beetles", Price: 2000}
@@ -123,13 +125,22 @@ func TestAddAlbumAlreadyExists(t *testing.T) {
 func TestAddAlbumBadJSON(t *testing.T) {
 	server := newTestServer()
 	result := serve(t, server, newRequest(t, "POST", "/albums", strings.NewReader("@")))
-	ensureStatusCode(t, result, http.StatusBadRequest)
+	ensureStatus(t, result, http.StatusBadRequest)
+	data := map[string]interface{}{
+		"details": "invalid character '@' looking for beginning of value",
+	}
+	ensureError(t, result, http.StatusBadRequest, "malformed-json", data)
 }
 
 func TestAddAlbumMissingFields(t *testing.T) {
 	server := newTestServer()
 	result := serve(t, server, newRequest(t, "POST", "/albums", strings.NewReader("{}")))
-	ensureStatusCode(t, result, http.StatusBadRequest)
+	ensureStatus(t, result, http.StatusBadRequest)
+	data := map[string]interface{}{
+		"details": "missing fields",
+		"fields":  []interface{}{"id", "title", "artist"},
+	}
+	ensureError(t, result, http.StatusBadRequest, "validation", data)
 }
 
 func TestConcurrentRequests(t *testing.T) {
@@ -137,15 +148,15 @@ func TestConcurrentRequests(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		go func(i int) {
 			result := serve(t, server, newRequest(t, "GET", "/albums", nil))
-			ensureStatusCode(t, result, http.StatusOK)
+			ensureStatus(t, result, http.StatusOK)
 
 			albumID := "c" + strconv.Itoa(i)
 			body := `{"id": "` + albumID + `", "title": "T", "artist": "A"}`
 			result = serve(t, server, newRequest(t, "POST", "/albums", strings.NewReader(body)))
-			ensureStatusCode(t, result, http.StatusCreated)
+			ensureStatus(t, result, http.StatusCreated)
 
 			result = serve(t, server, newRequest(t, "GET", "/albums/"+albumID, nil))
-			ensureStatusCode(t, result, http.StatusOK)
+			ensureStatus(t, result, http.StatusOK)
 		}(i)
 	}
 }
@@ -155,14 +166,17 @@ func TestDatabaseErrors(t *testing.T) {
 	server := NewServer(db, log.New(io.Discard, "", 0))
 
 	result := serve(t, server, newRequest(t, "GET", "/albums", nil))
-	ensureStatusCode(t, result, http.StatusInternalServerError)
+	ensureStatus(t, result, http.StatusInternalServerError)
+	ensureError(t, result, http.StatusInternalServerError, "database", nil)
 
 	body := `{"id": "a9", "title": "Pianoman", "artist": "Billy Joel"}`
 	result = serve(t, server, newRequest(t, "POST", "/albums", strings.NewReader(body)))
-	ensureStatusCode(t, result, http.StatusInternalServerError)
+	ensureStatus(t, result, http.StatusInternalServerError)
+	ensureError(t, result, http.StatusInternalServerError, "database", nil)
 
 	result = serve(t, server, newRequest(t, "GET", "/albums/a1", nil))
-	ensureStatusCode(t, result, http.StatusInternalServerError)
+	ensureStatus(t, result, http.StatusInternalServerError)
+	ensureError(t, result, http.StatusInternalServerError, "database", nil)
 }
 
 type errorDatabase struct{}
@@ -215,9 +229,28 @@ func unmarshalResponse(t *testing.T, body io.Reader, v interface{}) {
 	}
 }
 
-func ensureStatusCode(t *testing.T, response *http.Response, want int) {
+func ensureStatus(t *testing.T, response *http.Response, want int) {
 	t.Helper()
 	if response.StatusCode != want {
 		t.Fatalf("bad status code: got %d, want %d", response.StatusCode, want)
+	}
+}
+
+func ensureError(t *testing.T, response *http.Response, status int, error string, data map[string]interface{}) {
+	t.Helper()
+	type errorResponse struct {
+		Status int                    `json:"status"`
+		Error  string                 `json:"error"`
+		Data   map[string]interface{} `json:"data"`
+	}
+	var payload errorResponse
+	unmarshalResponse(t, response.Body, &payload)
+	expected := errorResponse{
+		Status: status,
+		Error:  error,
+		Data:   data,
+	}
+	if !reflect.DeepEqual(payload, expected) {
+		t.Fatalf("bad error: got vs want:\n%#v\n%#v", payload, expected)
 	}
 }
