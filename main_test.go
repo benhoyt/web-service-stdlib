@@ -128,18 +128,20 @@ func TestAddAlbumBadJSON(t *testing.T) {
 	result := serve(t, server, newRequest(t, "POST", "/albums", strings.NewReader("@")))
 	ensureStatus(t, result, http.StatusBadRequest)
 	data := map[string]interface{}{
-		"details": "invalid character '@' looking for beginning of value",
+		"message": "invalid character '@' looking for beginning of value",
 	}
 	ensureError(t, result, http.StatusBadRequest, "malformed-json", data)
 }
 
 func TestAddAlbumMissingFields(t *testing.T) {
 	server := newTestServer()
-	result := serve(t, server, newRequest(t, "POST", "/albums", strings.NewReader("{}")))
+	result := serve(t, server, newRequest(t, "POST", "/albums", strings.NewReader(`{"price": -1}`)))
 	ensureStatus(t, result, http.StatusBadRequest)
 	data := map[string]interface{}{
-		"details": "missing fields",
-		"fields":  []interface{}{"id", "title", "artist"},
+		"id":     map[string]interface{}{"error": "required"},
+		"title":  map[string]interface{}{"error": "required"},
+		"artist": map[string]interface{}{"error": "required"},
+		"price":  map[string]interface{}{"error": "out-of-range", "message": "price must be between 0 and $1000"},
 	}
 	ensureError(t, result, http.StatusBadRequest, "validation", data)
 }

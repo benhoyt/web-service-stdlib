@@ -3,8 +3,6 @@
 // This is a rewrite of https://golang.org/doc/tutorial/web-service-gin
 // using just the Go standard library (and fixing a few issues).
 
-// TODO: check test coverage HTML
-
 package main
 
 import (
@@ -138,23 +136,26 @@ func (s *Server) addAlbum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate the input (simplistic: just check required fields are present)
-	var missing []string
+	// Validate the input and build a map of validation errors
+	type validationError struct {
+		Error   string `json:"error"`
+		Message string `json:"message,omitempty"`
+	}
+	errors := make(map[string]interface{})
 	if album.ID == "" {
-		missing = append(missing, "id")
+		errors["id"] = validationError{"required", ""}
 	}
 	if album.Title == "" {
-		missing = append(missing, "title")
+		errors["title"] = validationError{"required", ""}
 	}
 	if album.Artist == "" {
-		missing = append(missing, "artist")
+		errors["artist"] = validationError{"required", ""}
 	}
-	if len(missing) > 0 {
-		data := map[string]interface{}{
-			"details": "missing fields",
-			"fields":  missing,
-		}
-		jsonError(w, http.StatusBadRequest, ErrorValidation, data)
+	if album.Price < 0 || album.Price >= 100000 {
+		errors["price"] = validationError{"out-of-range", "price must be between 0 and $1000"}
+	}
+	if len(errors) > 0 {
+		jsonError(w, http.StatusBadRequest, ErrorValidation, errors)
 		return
 	}
 
@@ -220,7 +221,7 @@ func readJSON(w http.ResponseWriter, r *http.Request, v interface{}) bool {
 	}
 	err = json.Unmarshal(b, v)
 	if err != nil {
-		data := map[string]interface{}{"details": err.Error()}
+		data := map[string]interface{}{"message": err.Error()}
 		jsonError(w, http.StatusBadRequest, ErrorMalformedJSON, data)
 		return false
 	}
