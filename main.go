@@ -36,7 +36,7 @@ func main() {
 	http.ListenAndServe(":"+strconv.Itoa(port), server)
 }
 
-// Server is the album server.
+// Server is the album HTTP server.
 type Server struct {
 	db  Database
 	log *log.Logger
@@ -44,15 +44,15 @@ type Server struct {
 
 // Database is the interface used by the server to load and store albums.
 type Database interface {
-	// GetAlbums returns a copy of all albums in the database, sorted by ID.
+	// GetAlbums returns a copy of all albums, sorted by ID.
 	GetAlbums() ([]Album, error)
 
-	// GetAlbumsByID returns a single album by ID, or ErrDoesNotExist if an
-	// album with that ID does not exist.
+	// GetAlbumsByID returns a single album by ID, or ErrDoesNotExist if
+	// an album with that ID does not exist.
 	GetAlbumByID(id string) (Album, error)
 
-	// AddAlbum adds a single album, or ErrAlreadyExists if an album with the
-	// given ID already exists.
+	// AddAlbum adds a single album, or ErrAlreadyExists if an album with
+	// the given ID already exists.
 	AddAlbum(album Album) error
 }
 
@@ -230,8 +230,8 @@ func readJSON(w http.ResponseWriter, r *http.Request, v interface{}) bool {
 	return true
 }
 
-// MemoryDatabase is a Database implementation that uses a simple in-memory map
-// to store the albums.
+// MemoryDatabase is a Database implementation that uses a simple
+// in-memory map to store the albums.
 type MemoryDatabase struct {
 	lock   sync.RWMutex
 	albums map[string]Album

@@ -182,6 +182,20 @@ func TestDatabaseErrors(t *testing.T) {
 	ensureError(t, result, http.StatusInternalServerError, "database", nil)
 }
 
+type errorDatabase struct{}
+
+func (errorDatabase) GetAlbums() ([]Album, error) {
+	return nil, errors.New("GetAlbums error")
+}
+
+func (errorDatabase) GetAlbumByID(id string) (Album, error) {
+	return Album{}, errors.New("GetAlbumByID error")
+}
+
+func (errorDatabase) AddAlbum(album Album) error {
+	return errors.New("AddAlbum error")
+}
+
 func TestMethodNotAllowed(t *testing.T) {
 	server := newTestServer()
 	result := serve(t, server, newRequest(t, "PUT", "/albums", nil))
@@ -207,20 +221,6 @@ func TestReadJSONReadError(t *testing.T) {
 	result := serve(t, server, newRequest(t, "POST", "/albums", errReader))
 	ensureStatus(t, result, http.StatusInternalServerError)
 	ensureError(t, result, http.StatusInternalServerError, "internal", nil)
-}
-
-type errorDatabase struct{}
-
-func (errorDatabase) GetAlbums() ([]Album, error) {
-	return nil, errors.New("GetAlbums error")
-}
-
-func (errorDatabase) GetAlbumByID(id string) (Album, error) {
-	return Album{}, errors.New("GetAlbumByID error")
-}
-
-func (errorDatabase) AddAlbum(album Album) error {
-	return errors.New("AddAlbum error")
 }
 
 func newTestServer() *Server {
