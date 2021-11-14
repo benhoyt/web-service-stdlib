@@ -183,8 +183,9 @@ func (s *Server) getAlbumByID(w http.ResponseWriter, r *http.Request, id string)
 	writeJSON(w, http.StatusOK, album)
 }
 
-// writeJSON marshals v to JSON and writes it to the response, handling errors
-// as appropriate. It also sets the Content-Type header to application/json.
+// writeJSON marshals v to JSON and writes it to the response, handling
+// errors as appropriate. It also sets the Content-Type header to
+// "application/json".
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	b, err := json.MarshalIndent(v, "", "    ")
@@ -196,8 +197,8 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Write(b)
 }
 
-// jsonError writes a structured error as JSON to the response, with optional
-// structured data in the "data" field.
+// jsonError writes a structured error as JSON to the response, with
+// optional structured data in the "data" field.
 func jsonError(w http.ResponseWriter, status int, error string, data map[string]interface{}) {
 	response := struct {
 		Status int                    `json:"status"`
@@ -212,8 +213,8 @@ func jsonError(w http.ResponseWriter, status int, error string, data map[string]
 }
 
 // readJSON reads the request body and unmarshals it from JSON, handling
-// errors as appropriate. It returns true on success; the caller should return
-// from the handler early if it returns false.
+// errors as appropriate. It returns true on success; the caller should
+// return from the handler early if it returns false.
 func readJSON(w http.ResponseWriter, r *http.Request, v interface{}) bool {
 	b, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -232,7 +233,7 @@ func readJSON(w http.ResponseWriter, r *http.Request, v interface{}) bool {
 // MemoryDatabase is a Database implementation that uses a simple in-memory map
 // to store the albums.
 type MemoryDatabase struct {
-	lock   sync.Mutex
+	lock   sync.RWMutex
 	albums map[string]Album
 }
 
@@ -242,8 +243,8 @@ func NewMemoryDatabase() *MemoryDatabase {
 }
 
 func (d *MemoryDatabase) GetAlbums() ([]Album, error) {
-	d.lock.Lock()
-	defer d.lock.Unlock()
+	d.lock.RLock()
+	defer d.lock.RUnlock()
 
 	// Make a copy of the albums map (as a slice)
 	albums := make([]Album, 0, len(d.albums))
@@ -259,8 +260,8 @@ func (d *MemoryDatabase) GetAlbums() ([]Album, error) {
 }
 
 func (d *MemoryDatabase) GetAlbumByID(id string) (Album, error) {
-	d.lock.Lock()
-	defer d.lock.Unlock()
+	d.lock.RLock()
+	defer d.lock.RUnlock()
 
 	album, ok := d.albums[id]
 	if !ok {
