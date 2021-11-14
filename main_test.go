@@ -30,7 +30,7 @@ func TestGetAlbums(t *testing.T) {
 	ensureStatus(t, result, http.StatusOK)
 
 	var got []testAlbum
-	unmarshalResponse(t, result.Body, &got)
+	unmarshalResponse(t, result, &got)
 	want := []testAlbum{
 		{ID: "a1", Title: "9th Symphony", Artist: "Beethoven", Price: 795},
 		{ID: "a2", Title: "Hey Jude", Artist: "The Beetles", Price: 2000},
@@ -73,7 +73,7 @@ func testGetAlbum(t *testing.T, server *Server, test getAlbumTest) {
 	}
 
 	var got testAlbum
-	unmarshalResponse(t, result.Body, &got)
+	unmarshalResponse(t, result, &got)
 	if !reflect.DeepEqual(got, test.want) {
 		t.Fatalf("bad response: got vs want:\n%#v\n%#v", got, test.want)
 	}
@@ -86,7 +86,7 @@ func TestAddAlbumCreated(t *testing.T) {
 	ensureStatus(t, result, http.StatusCreated)
 
 	var got testAlbum
-	unmarshalResponse(t, result.Body, &got)
+	unmarshalResponse(t, result, &got)
 	want := testAlbum{ID: "a9", Title: "Pianoman", Artist: "Billy Joel", Price: 1234}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("bad response: got vs want:\n%#v\n%#v", got, want)
@@ -99,7 +99,7 @@ func TestAddAlbumCreated(t *testing.T) {
 	result = serve(t, server, newRequest(t, "GET", "/albums", nil))
 	ensureStatus(t, result, http.StatusOK)
 	var albums []testAlbum
-	unmarshalResponse(t, result.Body, &albums)
+	unmarshalResponse(t, result, &albums)
 	for _, album := range albums {
 		if album.ID == "a9" {
 			if !reflect.DeepEqual(album, want) {
@@ -247,9 +247,14 @@ func newRequest(t *testing.T, method, url string, body io.Reader) *http.Request 
 	return request
 }
 
-func unmarshalResponse(t *testing.T, body io.Reader, v interface{}) {
+func unmarshalResponse(t *testing.T, response *http.Response, v interface{}) {
 	t.Helper()
-	b, err := io.ReadAll(body)
+	got := response.Header.Get("Content-Type")
+	want := "application/json; charset=utf-8"
+	if got != want {
+		t.Fatalf("bad Content-Type header: got %q, want %q", got, want)
+	}
+	b, err := io.ReadAll(response.Body)
 	if err != nil {
 		t.Fatalf("error reading response body: %v", err)
 	}
@@ -274,7 +279,7 @@ func ensureError(t *testing.T, response *http.Response, status int, error string
 		Data   map[string]interface{} `json:"data"`
 	}
 	var got errorResponse
-	unmarshalResponse(t, response.Body, &got)
+	unmarshalResponse(t, response, &got)
 	want := errorResponse{
 		Status: status,
 		Error:  error,

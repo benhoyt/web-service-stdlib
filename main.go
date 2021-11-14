@@ -168,8 +168,7 @@ func (s *Server) addAlbum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	writeJSON(w, http.StatusOK, album)
+	writeJSON(w, http.StatusCreated, album)
 }
 
 func (s *Server) getAlbumByID(w http.ResponseWriter, r *http.Request, id string) {
@@ -187,7 +186,7 @@ func (s *Server) getAlbumByID(w http.ResponseWriter, r *http.Request, id string)
 // writeJSON marshals v to JSON and writes it to the response, handling errors
 // as appropriate. It also sets the Content-Type header to application/json.
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	b, err := json.MarshalIndent(v, "", "    ")
 	if err != nil {
 		http.Error(w, `{"error":"`+ErrorInternal+`"}`, http.StatusInternalServerError)
