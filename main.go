@@ -76,7 +76,7 @@ type Album struct {
 	ID     string `json:"id"`
 	Title  string `json:"title"`
 	Artist string `json:"artist"`
-	Price  int    `json:"price"` // not using floating point for currency
+	Price  int    `json:"price,omitempty"` // use int cents instead of float64 for currency
 }
 
 // NewServer creates a new server using the given database implementation.
@@ -136,31 +136,31 @@ func (s *Server) addAlbum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate the input and build a map of validation errors
-	type validationError struct {
+	// Validate the input and build a map of validation issues
+	type validationIssue struct {
 		Error   string `json:"error"`
 		Message string `json:"message,omitempty"`
 	}
-	errors := make(map[string]interface{})
+	issues := make(map[string]interface{})
 	if album.ID == "" {
-		errors["id"] = validationError{"required", ""}
+		issues["id"] = validationIssue{"required", ""}
 	}
 	if album.Title == "" {
-		errors["title"] = validationError{"required", ""}
+		issues["title"] = validationIssue{"required", ""}
 	}
 	if album.Artist == "" {
-		errors["artist"] = validationError{"required", ""}
+		issues["artist"] = validationIssue{"required", ""}
 	}
 	if album.Price < 0 || album.Price >= 100000 {
-		errors["price"] = validationError{"out-of-range", "price must be between 0 and $1000"}
+		issues["price"] = validationIssue{"out-of-range", "price must be between 0 and $1000"}
 	}
-	if len(errors) > 0 {
-		jsonError(w, http.StatusBadRequest, ErrorValidation, errors)
+	if len(issues) > 0 {
+		jsonError(w, http.StatusBadRequest, ErrorValidation, issues)
 		return
 	}
 
 	err := s.db.AddAlbum(album)
-	if err == ErrAlreadyExists {
+	if errors.Is(err, ErrAlreadyExists) {
 		jsonError(w, http.StatusConflict, ErrorAlreadyExists, nil)
 		return
 	} else if err != nil {
@@ -173,7 +173,7 @@ func (s *Server) addAlbum(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getAlbumByID(w http.ResponseWriter, r *http.Request, id string) {
 	album, err := s.db.GetAlbumByID(id)
-	if err == ErrDoesNotExist {
+	if errors.Is(err, ErrDoesNotExist) {
 		jsonError(w, http.StatusNotFound, ErrorNotFound, nil)
 		return
 	} else if err != nil {
@@ -196,6 +196,8 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Write(b)
 }
 
+// jsonError writes a structured error as JSON to the response, with optional
+// structured data in the "data" field.
 func jsonError(w http.ResponseWriter, status int, error string, data map[string]interface{}) {
 	response := struct {
 		Status int                    `json:"status"`
