@@ -33,7 +33,7 @@ func TestGetAlbums(t *testing.T) {
 	unmarshalResponse(t, result, &got)
 	want := []testAlbum{
 		{ID: "a1", Title: "9th Symphony", Artist: "Beethoven", Price: 795},
-		{ID: "a2", Title: "Hey Jude", Artist: "The Beetles", Price: 2000},
+		{ID: "a2", Title: "Hey Jude", Artist: "The Beatles", Price: 2000},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("bad response: got vs want:\n%#v\n%#v", got, want)
@@ -46,7 +46,7 @@ func TestGetAlbum(t *testing.T) {
 	tests := []getAlbumTest{
 		{"/albums/", http.StatusNotFound, testAlbum{}},
 		{"/albums/a1", http.StatusOK, testAlbum{ID: "a1", Title: "9th Symphony", Artist: "Beethoven", Price: 795}},
-		{"/albums/a2", http.StatusOK, testAlbum{ID: "a2", Title: "Hey Jude", Artist: "The Beetles", Price: 2000}},
+		{"/albums/a2", http.StatusOK, testAlbum{ID: "a2", Title: "Hey Jude", Artist: "The Beatles", Price: 2000}},
 		{"/albums/a3", http.StatusNotFound, testAlbum{}},
 		{"/albums/foo/bar", http.StatusNotFound, testAlbum{}},
 	}
@@ -119,7 +119,7 @@ func TestAddAlbumAlreadyExists(t *testing.T) {
 	ensureError(t, result, http.StatusConflict, "already-exists", nil)
 
 	// Ensure it didn't modify the album
-	want := testAlbum{ID: "a2", Title: "Hey Jude", Artist: "The Beetles", Price: 2000}
+	want := testAlbum{ID: "a2", Title: "Hey Jude", Artist: "The Beatles", Price: 2000}
 	testGetAlbum(t, server, getAlbumTest{"/albums/a2", http.StatusOK, want})
 }
 
@@ -225,7 +225,7 @@ func (errorDatabase) AddAlbum(album Album) error {
 
 func newTestServer() *Server {
 	db := NewMemoryDatabase()
-	db.AddAlbum(Album{ID: "a2", Title: "Hey Jude", Artist: "The Beetles", Price: 2000})
+	db.AddAlbum(Album{ID: "a2", Title: "Hey Jude", Artist: "The Beatles", Price: 2000})
 	db.AddAlbum(Album{ID: "a1", Title: "9th Symphony", Artist: "Beethoven", Price: 795})
 	server := NewServer(db, log.New(io.Discard, "", 0))
 	return server

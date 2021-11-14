@@ -27,7 +27,7 @@ func main() {
 	// Create in-memory database and add a couple of test albums
 	db := NewMemoryDatabase()
 	db.AddAlbum(Album{ID: "a1", Title: "9th Symphony", Artist: "Beethoven", Price: 795})
-	db.AddAlbum(Album{ID: "a2", Title: "Hey Jude", Artist: "The Beetles", Price: 2000})
+	db.AddAlbum(Album{ID: "a2", Title: "Hey Jude", Artist: "The Beatles", Price: 2000})
 
 	// Create server and wire up database
 	server := NewServer(db, log.Default())
