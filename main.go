@@ -85,7 +85,7 @@ func NewServer(db Database, log *log.Logger) *Server {
 }
 
 // Regex to match "/albums/:id" (id must be one or more non-slash chars).
-var albumsIDRegexp = regexp.MustCompile(`^/albums/[^/]+$`)
+var reAlbumsID = regexp.MustCompile(`^/albums/([^/]+)$`)
 
 // ServeHTTP routes the request and calls the correct handler based on the URL
 // and HTTP method. It writes a 404 Not Found if the request URL is unknown,
@@ -93,6 +93,8 @@ var albumsIDRegexp = regexp.MustCompile(`^/albums/[^/]+$`)
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	s.log.Printf("%s %s", r.Method, path)
+
+	var id string
 
 	switch {
 	case path == "/albums":
@@ -106,10 +108,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, http.StatusMethodNotAllowed, ErrorMethodNotAllowed, nil)
 		}
 
-	case albumsIDRegexp.MatchString(path):
+	case match(path, reAlbumsID, &id):
 		switch r.Method {
 		case "GET":
-			id := path[len("/albums/"):]
 			s.getAlbumByID(w, r, id)
 		default:
 			w.Header().Set("Allow", "GET")
@@ -119,6 +120,19 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		jsonError(w, http.StatusNotFound, ErrorNotFound, nil)
 	}
+}
+
+// match returns true if path matches the regex pattern, and binds any
+// capturing groups in pattern to the vars.
+func match(path string, pattern *regexp.Regexp, vars ...*string) bool {
+	matches := pattern.FindStringSubmatch(path)
+	if len(matches) <= 0 {
+		return false
+	}
+	for i, match := range matches[1:] {
+		*vars[i] = match
+	}
+	return true
 }
 
 func (s *Server) getAlbums(w http.ResponseWriter, r *http.Request) {
