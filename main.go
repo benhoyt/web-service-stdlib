@@ -138,6 +138,7 @@ func match(path string, pattern *regexp.Regexp, vars ...*string) bool {
 func (s *Server) getAlbums(w http.ResponseWriter, r *http.Request) {
 	albums, err := s.db.GetAlbums()
 	if err != nil {
+		s.log.Printf("error fetching albums: %v", err)
 		s.jsonError(w, http.StatusInternalServerError, ErrorDatabase, nil)
 		return
 	}
@@ -178,6 +179,7 @@ func (s *Server) addAlbum(w http.ResponseWriter, r *http.Request) {
 		s.jsonError(w, http.StatusConflict, ErrorAlreadyExists, nil)
 		return
 	} else if err != nil {
+		s.log.Printf("error adding album ID %q: %v", album.ID, err)
 		s.jsonError(w, http.StatusInternalServerError, ErrorDatabase, nil)
 		return
 	}
@@ -191,6 +193,7 @@ func (s *Server) getAlbumByID(w http.ResponseWriter, r *http.Request, id string)
 		s.jsonError(w, http.StatusNotFound, ErrorNotFound, nil)
 		return
 	} else if err != nil {
+		s.log.Printf("error fetching album ID %q: %v", id, err)
 		s.jsonError(w, http.StatusInternalServerError, ErrorDatabase, nil)
 		return
 	}
@@ -204,6 +207,7 @@ func (s *Server) writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	b, err := json.MarshalIndent(v, "", "    ")
 	if err != nil {
+		s.log.Printf("error marshaling JSON: %v", err)
 		http.Error(w, `{"error":"`+ErrorInternal+`"}`, http.StatusInternalServerError)
 		return
 	}
@@ -236,6 +240,7 @@ func (s *Server) jsonError(w http.ResponseWriter, status int, error string, data
 func (s *Server) readJSON(w http.ResponseWriter, r *http.Request, v interface{}) bool {
 	b, err := io.ReadAll(r.Body)
 	if err != nil {
+		s.log.Printf("error reading JSON body: %v", err)
 		s.jsonError(w, http.StatusInternalServerError, ErrorInternal, nil)
 		return false
 	}
